@@ -711,12 +711,17 @@ export interface Solver<Name extends string = 'main'> {
 
   model(): Model<Name>;
 
+<<<<<<< HEAD
   /**
    * Manually decrease the reference count of the solver
    * This is automatically done when the solver is garbage collected,
    * but calling this eagerly can help release memory sooner.
    */
   release(): void;
+=======
+   // extensions
+   unsatCore(): AstVector<Name, Bool<Name>>
+>>>>>>> 9e18bd810 (update)
 }
 
 export interface Optimize<Name extends string = 'main'> {
