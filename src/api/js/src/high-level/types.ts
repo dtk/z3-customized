@@ -312,6 +312,8 @@ export interface Context<Name extends string = 'main'> {
    * @category Functions */
   solve(...assertions: Bool<Name>[]): Promise<Model<Name> | 'unsat' | 'unknown'>;
 
+  solveSync(...assertions: Bool<Name>[]): Model<Name> | 'unsat' | 'unknown';
+
   /////////////
   // Classes //
   /////////////
@@ -649,6 +651,8 @@ export interface Context<Name extends string = 'main'> {
 
   /** @category Operations */
   isSubset<ElemSort extends AnySort<Name>>(a: SMTSet<Name, ElemSort>, b: SMTSet<Name, ElemSort>): Bool<Name>;
+
+  simplifySync(expr: Expr<Name>): Expr<Name>;
 }
 
 export interface Ast<Name extends string = 'main', Ptr = unknown> {
@@ -707,21 +711,20 @@ export interface Solver<Name extends string = 'main'> {
 
   fromString(s: string): void;
 
-  check(...exprs: (Bool<Name> | AstVector<Name, Bool<Name>>)[]): CheckSatResult;
+  check(...exprs: (Bool<Name> | AstVector<Name, Bool<Name>>)[]): Promise<CheckSatResult>;
+
+  checkSync(...exprs: (Bool<Name> | AstVector<Name, Bool<Name>>)[]): CheckSatResult;
 
   model(): Model<Name>;
 
-<<<<<<< HEAD
   /**
    * Manually decrease the reference count of the solver
    * This is automatically done when the solver is garbage collected,
    * but calling this eagerly can help release memory sooner.
    */
   release(): void;
-=======
    // extensions
    unsatCore(): AstVector<Name, Bool<Name>>
->>>>>>> 9e18bd810 (update)
 }
 
 export interface Optimize<Name extends string = 'main'> {
@@ -752,6 +755,8 @@ export interface Optimize<Name extends string = 'main'> {
   minimize(expr: Arith<Name>): void;
 
   check(...exprs: (Bool<Name> | AstVector<Name, Bool<Name>>)[]): Promise<CheckSatResult>;
+
+  checkSync(...exprs: (Bool<Name> | AstVector<Name, Bool<Name>>)[]): CheckSatResult;
 
   model(): Model<Name>;
 
