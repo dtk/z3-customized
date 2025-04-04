@@ -14,6 +14,7 @@ import {
   Z3_sort,
   Z3_sort_kind,
   Z3_tactic,
+  Z3_goal,
 } from '../low-level';
 
 /** @hidden */
@@ -342,6 +343,8 @@ export interface Context<Name extends string = 'main'> {
   >;
   /** @category Classes */
   readonly Tactic: new (name: string) => Tactic<Name>;
+  //extended
+  readonly Goal: new () => Goal<Name>;
 
   /////////////
   // Objects //
@@ -1748,6 +1751,16 @@ export interface Tactic<Name extends string = 'main'> {
 
   readonly ctx: Context<Name>;
   readonly ptr: Z3_tactic;
+}
+//extended
+export interface Goal<Name extends string = 'main'> {
+  /** @hidden */
+  readonly __typename: 'Goal';
+
+  readonly ctx: Context<Name>;
+  readonly ptr: Z3_goal;
+  add(expr: Expr): void;
+  sexpr(): string;
 }
 
 /** @hidden */

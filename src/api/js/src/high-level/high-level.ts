@@ -36,6 +36,7 @@ import {
   Z3_params,
   Z3_func_entry,
   Z3_optimize,
+  Z3_goal,
 } from '../low-level';
 import {
   AnyAst,
@@ -89,6 +90,7 @@ import {
   FuncEntry,
   SMTSetSort,
   SMTSet,
+  Goal,
 } from './types';
 import { allSatisfy, assert, assertExhaustive } from './utils';
 
@@ -99,17 +101,17 @@ const asyncMutex = new Mutex();
 function isCoercibleRational(obj: any): obj is CoercibleRational {
   // prettier-ignore
   const r = (
-        (obj !== null &&
-            (typeof obj === 'object' || typeof obj === 'function')) &&
-        (obj.numerator !== null &&
-            (typeof obj.numerator === 'number' || typeof obj.numerator === 'bigint')) &&
-        (obj.denominator !== null &&
-            (typeof obj.denominator === 'number' || typeof obj.denominator === 'bigint'))
-    );
+    (obj !== null &&
+      (typeof obj === 'object' || typeof obj === 'function')) &&
+    (obj.numerator !== null &&
+      (typeof obj.numerator === 'number' || typeof obj.numerator === 'bigint')) &&
+    (obj.denominator !== null &&
+      (typeof obj.denominator === 'number' || typeof obj.denominator === 'bigint'))
+  );
   r &&
     assert(
       (typeof obj!.numerator !== 'number' || Number.isSafeInteger(obj!.numerator)) &&
-        (typeof obj!.denominator !== 'number' || Number.isSafeInteger(obj!.denominator)),
+      (typeof obj!.denominator !== 'number' || Number.isSafeInteger(obj!.denominator)),
       'Fraction numerator and denominator must be integers',
     );
   return r;
@@ -524,6 +526,12 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
       r && _assertContext(obj);
       return r;
     }
+    //extended
+    function isGoal(obj: unknown): obj is Goal<Name> {
+      const r = obj instanceof GoalImpl;
+      r && _assertContext(obj);
+      return r;
+    }
 
     function isAstVector(obj: unknown): obj is AstVector<Name> {
       const r = obj instanceof AstVectorImpl;
@@ -818,12 +826,12 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
       sort<ElemSort extends AnySort<Name>>(sort: ElemSort): SMTSetSort<Name, ElemSort> {
         return Array.sort(sort, Bool.sort());
       },
-      const<ElemSort extends AnySort<Name>>(name: string, sort: ElemSort) : SMTSet<Name, ElemSort> {
+      const<ElemSort extends AnySort<Name>>(name: string, sort: ElemSort): SMTSet<Name, ElemSort> {
         return new SetImpl<ElemSort>(
           check(Z3.mk_const(contextPtr, _toSymbol(name), Array.sort(sort, Bool.sort()).ptr)),
         );
       },
-      consts<ElemSort extends AnySort<Name>>(names: string | string[], sort: ElemSort) : SMTSet<Name, ElemSort>[] {
+      consts<ElemSort extends AnySort<Name>>(names: string | string[], sort: ElemSort): SMTSet<Name, ElemSort>[] {
         if (typeof names === 'string') {
           names = names.split(' ');
         }
@@ -1297,17 +1305,17 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
     function SetUnion<ElemSort extends AnySort<Name>>(...args: SMTSet<Name, ElemSort>[]): SMTSet<Name, ElemSort> {
       return new SetImpl<ElemSort>(check(Z3.mk_set_union(contextPtr, args.map(arg => arg.ast))));
     }
-    
+
     function SetIntersect<ElemSort extends AnySort<Name>>(...args: SMTSet<Name, ElemSort>[]): SMTSet<Name, ElemSort> {
       return new SetImpl<ElemSort>(check(Z3.mk_set_intersect(contextPtr, args.map(arg => arg.ast))));
     }
-    
+
     function SetDifference<ElemSort extends AnySort<Name>>(a: SMTSet<Name, ElemSort>, b: SMTSet<Name, ElemSort>): SMTSet<Name, ElemSort> {
       return new SetImpl<ElemSort>(check(Z3.mk_set_difference(contextPtr, a.ast, b.ast)));
     }
-    
+
     function SetHasSize<ElemSort extends AnySort<Name>>(set: SMTSet<Name, ElemSort>, size: bigint | number | string | IntNum<Name>): Bool<Name> {
-      const a = typeof size === 'object'? Int.sort().cast(size) : Int.sort().cast(size);
+      const a = typeof size === 'object' ? Int.sort().cast(size) : Int.sort().cast(size);
       return new BoolImpl(check(Z3.mk_set_has_size(contextPtr, set.ast, a.ast)));
     }
 
@@ -1322,7 +1330,7 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
     function SetComplement<ElemSort extends AnySort<Name>>(set: SMTSet<Name, ElemSort>): SMTSet<Name, ElemSort> {
       return new SetImpl<ElemSort>(check(Z3.mk_set_complement(contextPtr, set.ast)));
     }
-    
+
     function EmptySet<ElemSort extends AnySort<Name>>(sort: ElemSort): SMTSet<Name, ElemSort> {
       return new SetImpl<ElemSort>(check(Z3.mk_empty_set(contextPtr, sort.ptr)));
     }
@@ -1592,9 +1600,9 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
           _assertContext(expr);
           return expr.ast;
         });
-        const result = 
+        const result =
           check(Z3.optimize_check(contextPtr, this.ptr, assumptions)
-        );
+          );
         switch (result) {
           case Z3_lbool.Z3_L_FALSE:
             return 'unsat';
@@ -1908,40 +1916,39 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
       }
     }
     // extension 
-    abstract class DatatypeSortBaseImpl extends SortImpl { 
+    abstract class DatatypeSortBaseImpl extends SortImpl {
     }
-    class EnumSortImpl extends DatatypeSortBaseImpl implements EnumSort<Name>{
+    class EnumSortImpl extends DatatypeSortBaseImpl implements EnumSort<Name> {
       declare readonly __typename: EnumSort['__typename'];
-        sortName: string
-        constantNames: string[]
-        numConstructors: number
-        datatypeConstructors: FuncDeclImpl<Sort<Name>[], Sort<Name>>[]
-        constants: ExprImpl<Z3_ast,Sort<Name>>[]
-        constructor(sortName: string, constantNames: string[]) {
-            const z3EnumInfo = Z3.mk_enumeration_sort(
-                contextPtr,
-                _toSymbol(sortName),
-                constantNames.map(constantName => _toSymbol(constantName))
-            )
-            super(z3EnumInfo.rv)
-            this.sortName = sortName
-            this.constantNames = constantNames
-            this.numConstructors = constantNames.length
-            this.datatypeConstructors = z3EnumInfo.enum_consts.map(funcDeclAst =>
-                new FuncDeclImpl(funcDeclAst))
-            this.constants = this.datatypeConstructors.map(funcDecl => funcDecl.call())
-        }
+      sortName: string
+      constantNames: string[]
+      numConstructors: number
+      datatypeConstructors: FuncDeclImpl<Sort<Name>[], Sort<Name>>[]
+      constants: ExprImpl<Z3_ast, Sort<Name>>[]
+      constructor(sortName: string, constantNames: string[]) {
+        const z3EnumInfo = Z3.mk_enumeration_sort(
+          contextPtr,
+          _toSymbol(sortName),
+          constantNames.map(constantName => _toSymbol(constantName))
+        )
+        super(z3EnumInfo.rv)
+        this.sortName = sortName
+        this.constantNames = constantNames
+        this.numConstructors = constantNames.length
+        this.datatypeConstructors = z3EnumInfo.enum_consts.map(funcDeclAst =>
+          new FuncDeclImpl(funcDeclAst))
+        this.constants = this.datatypeConstructors.map(funcDecl => funcDecl.call())
+      }
 
-        sexpr() {
-            // TODO: refine
-            return this.sortName
-        }
+      sexpr() {
+        // TODO: refine
+        return this.sortName
+      }
     }
 
     class FuncDeclImpl<DomainSort extends Sort<Name>[], RangeSort extends Sort<Name>>
       extends AstImpl<Z3_func_decl>
-      implements FuncDecl<Name>
-    {
+      implements FuncDecl<Name> {
       declare readonly __typename: FuncDecl['__typename'];
 
       get ast(): Z3_ast {
@@ -2025,8 +2032,7 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
 
     class ExprImpl<Ptr extends Z3_ast, S extends Sort<Name> = AnySort<Name>>
       extends AstImpl<Ptr>
-      implements Expr<Name>
-    {
+      implements Expr<Name> {
       declare readonly __typename: Expr['__typename'];
 
       get sort(): S {
@@ -2171,6 +2177,28 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
 
         Z3.tactic_inc_ref(contextPtr, myPtr);
         cleanup.register(this, () => Z3.tactic_dec_ref(contextPtr, myPtr), this);
+      }
+    }
+    //extended 
+    class GoalImpl implements Goal<Name> {
+      declare readonly __typename: Goal['__typename'];
+      readonly ptr: Z3_goal;
+      readonly ctx: Context<Name>;
+
+      constructor() {
+        this.ctx = ctx;
+        let myPtr: Z3_goal;
+        myPtr = check(Z3.mk_goal(ctx.ptr, true, false, false));
+        this.ptr = myPtr;
+
+        Z3.goal_inc_ref(ctx.ptr, myPtr);
+        cleanup.register(this, () => Z3.goal_dec_ref(ctx.ptr, myPtr), this);
+      }
+      add(expr: Expr) {
+        Z3.goal_assert(this.ctx.ptr, this.ptr, expr.ast);
+      }
+      sexpr() {
+        return Z3.goal_to_string(this.ctx.ptr, this.ptr);
       }
     }
 
@@ -2650,8 +2678,7 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
 
     class ArraySortImpl<DomainSort extends NonEmptySortArray<Name>, RangeSort extends Sort<Name>>
       extends SortImpl
-      implements SMTArraySort<Name, DomainSort, RangeSort>
-    {
+      implements SMTArraySort<Name, DomainSort, RangeSort> {
       declare readonly __typename: SMTArraySort['__typename'];
 
       domain(): DomainSort[0] {
@@ -2669,8 +2696,7 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
 
     class ArrayImpl<DomainSort extends NonEmptySortArray<Name>, RangeSort extends Sort<Name>>
       extends ExprImpl<Z3_ast, ArraySortImpl<DomainSort, RangeSort>>
-      implements SMTArray<Name, DomainSort, RangeSort>
-    {
+      implements SMTArray<Name, DomainSort, RangeSort> {
       declare readonly __typename: 'Array' | 'Lambda';
 
       domain(): DomainSort[0] {
@@ -2735,12 +2761,11 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
     }
 
     class QuantifierImpl<
-        QVarSorts extends NonEmptySortArray<Name>,
-        QSort extends BoolSort<Name> | SMTArraySort<Name, QVarSorts>,
-      >
+      QVarSorts extends NonEmptySortArray<Name>,
+      QSort extends BoolSort<Name> | SMTArraySort<Name, QVarSorts>,
+    >
       extends ExprImpl<Z3_ast, QSort>
-      implements Quantifier<Name, QVarSorts, QSort>
-    {
+      implements Quantifier<Name, QVarSorts, QSort> {
       declare readonly __typename: Quantifier['__typename'];
 
       is_forall(): boolean {
@@ -2798,8 +2823,7 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
 
     class NonLambdaQuantifierImpl<QVarSorts extends NonEmptySortArray<Name>>
       extends QuantifierImpl<QVarSorts, BoolSort<Name>>
-      implements Quantifier<Name, QVarSorts, BoolSort<Name>>, Bool<Name>
-    {
+      implements Quantifier<Name, QVarSorts, BoolSort<Name>>, Bool<Name> {
       declare readonly __typename: 'NonLambdaQuantifier';
 
       not(): Bool<Name> {
@@ -2831,9 +2855,8 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
     class LambdaImpl<DomainSort extends NonEmptySortArray<Name>, RangeSort extends Sort<Name>>
       extends QuantifierImpl<DomainSort, SMTArraySort<Name, DomainSort, RangeSort>>
       implements
-        Quantifier<Name, DomainSort, SMTArraySort<Name, DomainSort, RangeSort>>,
-        SMTArray<Name, DomainSort, RangeSort>
-    {
+      Quantifier<Name, DomainSort, SMTArraySort<Name, DomainSort, RangeSort>>,
+      SMTArray<Name, DomainSort, RangeSort> {
       declare readonly __typename: 'Lambda';
 
       domain(): DomainSort[0] {
@@ -3055,6 +3078,8 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
       Optimize: OptimizeImpl,
       Model: ModelImpl,
       Tactic: TacticImpl,
+      // extended
+      Goal: GoalImpl,
       AstVector: AstVectorImpl as AstVectorCtor<Name>,
       AstMap: AstMapImpl as AstMapCtor<Name>,
 
