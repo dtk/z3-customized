@@ -37,6 +37,7 @@ import {
   Z3_func_entry,
   Z3_optimize,
   Z3_goal,
+  Z3_apply_result,
 } from '../low-level';
 import {
   AnyAst,
@@ -91,6 +92,7 @@ import {
   SMTSetSort,
   SMTSet,
   Goal,
+  ApplyResult,
 } from './types';
 import { allSatisfy, assert, assertExhaustive } from './utils';
 
@@ -529,6 +531,12 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
     //extended
     function isGoal(obj: unknown): obj is Goal<Name> {
       const r = obj instanceof GoalImpl;
+      r && _assertContext(obj);
+      return r;
+    }
+    //extended
+    function isApplyResult(obj: unknown): obj is ApplyResult<Name> {
+      const r = obj instanceof ApplyResultImpl;
       r && _assertContext(obj);
       return r;
     }
@@ -2185,10 +2193,12 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
       readonly ptr: Z3_goal;
       readonly ctx: Context<Name>;
 
-      constructor() {
+      constructor(opts?: { z3Goal?: Z3_goal }) {
+        // TODO: make sure if z3Goal is provided, 
+        // that we stil want Z3.goal_dec_ref and Z3.goal_inc_ref
         this.ctx = ctx;
         let myPtr: Z3_goal;
-        myPtr = check(Z3.mk_goal(ctx.ptr, true, false, false));
+        myPtr = opts?.z3Goal ?? check(Z3.mk_goal(ctx.ptr, true, false, false));
         this.ptr = myPtr;
 
         Z3.goal_inc_ref(ctx.ptr, myPtr);
@@ -2199,6 +2209,40 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
       }
       sexpr() {
         return Z3.goal_to_string(this.ctx.ptr, this.ptr);
+      }
+    }
+    //extended 
+    class ApplyResultImpl implements ApplyResult<Name> {
+      declare readonly __typename: ApplyResult['__typename'];
+      readonly ptr: Z3_apply_result;
+      readonly ctx: Context<Name>;
+      readonly tactic: Tactic<Name>;
+      readonly goal: Goal<Name>;
+
+      constructor(tactic: Tactic<Name>, goal: Goal<Name>) {
+        this.ctx = ctx
+        this.tactic = tactic;
+        this.goal = goal;
+        const contextPtr = this.ctx.ptr;
+        this.ptr = Z3.tactic_apply(contextPtr, tactic.ptr, goal.ptr);
+        Z3.apply_result_inc_ref(contextPtr, this.ptr);
+        cleanup.register(
+          this,
+          () => Z3.apply_result_dec_ref(contextPtr, this.ptr),
+        );
+      }
+      length() {
+        return Z3.apply_result_get_num_subgoals(this.ctx.ptr, this.ptr);
+      }
+      getApplyResult(subGoalIndex: number) {
+        if (subGoalIndex >= this.length()) {
+          throw new Error(`Index out of bounds: ${subGoalIndex} >= ${this.length()}`);
+        }
+        const z3Goal = Z3.apply_result_get_subgoal(this.ctx.ptr, this.ptr, subGoalIndex);
+        return new GoalImpl({ z3Goal });
+      }
+      sexpr() {
+        return Z3.goal_to_string(this.ctx.ptr, this.goal.ptr);
       }
     }
 
@@ -3080,6 +3124,8 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
       Tactic: TacticImpl,
       // extended
       Goal: GoalImpl,
+      // extended
+      ApplyResult: ApplyResultImpl,
       AstVector: AstVectorImpl as AstVectorCtor<Name>,
       AstMap: AstMapImpl as AstMapCtor<Name>,
 
@@ -3123,6 +3169,8 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
       isConstArray,
       isProbe,
       isTactic,
+      isGoal, // extended
+      isApplyResult, // extended
       isAstVector,
       eqIdentity,
       getVarIndex,

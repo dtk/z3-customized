@@ -15,6 +15,7 @@ import {
   Z3_sort_kind,
   Z3_tactic,
   Z3_goal,
+  Z3_apply_result,
 } from '../low-level';
 
 /** @hidden */
@@ -114,9 +115,9 @@ export type CoercibleToMap<T extends AnyExpr<Name>, Name extends string = 'main'
  * @category Global
  */
 
-export class Z3Error extends Error {}
+export class Z3Error extends Error { }
 
-export class Z3AssertionError extends Z3Error {}
+export class Z3AssertionError extends Z3Error { }
 
 /** @category Global */
 export type CheckSatResult = 'sat' | 'unsat' | 'unknown';
@@ -255,6 +256,14 @@ export interface Context<Name extends string = 'main'> {
   /** @category Functions */
   isTactic(obj: unknown): obj is Tactic<Name>;
 
+  // extended
+  /** @category Functions */
+  isGoal(obj: unknown): obj is Goal<Name>;
+
+  // extended
+  /** @category Functions */
+  isApplyResult(obj: unknown): obj is ApplyResult<Name>;
+
   /** @category Functions */
   isAstVector(obj: unknown): obj is AstVector<Name, AnyAst<Name>>;
 
@@ -344,7 +353,9 @@ export interface Context<Name extends string = 'main'> {
   /** @category Classes */
   readonly Tactic: new (name: string) => Tactic<Name>;
   //extended
-  readonly Goal: new () => Goal<Name>;
+  readonly Goal: new (opts?: { z3Goal?: Z3_goal }) => Goal<Name>;
+  //extended
+  readonly ApplyResult: new (tactic: Tactic<Name>, goal: Goal<Name>) => ApplyResult<Name>;
 
   /////////////
   // Objects //
@@ -621,16 +632,16 @@ export interface Context<Name extends string = 'main'> {
   substitute(t: Expr<Name>, ...substitutions: [Expr<Name>, Expr<Name>][]): Expr<Name>;
 
   simplify(expr: Expr<Name>): Promise<Expr<Name>>;
-  
+
   /** @category Operations */
   SetUnion<ElemSort extends AnySort<Name>>(...args: SMTSet<Name, ElemSort>[]): SMTSet<Name, ElemSort>;
-  
+
   /** @category Operations */
   SetIntersect<ElemSort extends AnySort<Name>>(...args: SMTSet<Name, ElemSort>[]): SMTSet<Name, ElemSort>;
-  
+
   /** @category Operations */
   SetDifference<ElemSort extends AnySort<Name>>(a: SMTSet<Name, ElemSort>, b: SMTSet<Name, ElemSort>): SMTSet<Name, ElemSort>;
-  
+
   /** @category Operations */
   SetHasSize<ElemSort extends AnySort<Name>>(set: SMTSet<Name, ElemSort>, size: bigint | number | string | IntNum<Name>): Bool<Name>;
 
@@ -642,13 +653,13 @@ export interface Context<Name extends string = 'main'> {
 
   /** @category Operations */
   SetComplement<ElemSort extends AnySort<Name>>(set: SMTSet<Name, ElemSort>): SMTSet<Name, ElemSort>;
-  
+
   /** @category Operations */
   EmptySet<ElemSort extends AnySort<Name>>(sort: ElemSort): SMTSet<Name, ElemSort>;
 
   /** @category Operations */
   FullSet<ElemSort extends AnySort<Name>>(sort: ElemSort): SMTSet<Name, ElemSort>;
-  
+
   /** @category Operations */
   isMember<ElemSort extends AnySort<Name>>(elem: CoercibleToMap<SortToExprMap<ElemSort, Name>, Name>, set: SMTSet<Name, ElemSort>): Bool<Name>;
 
@@ -683,7 +694,7 @@ export interface Ast<Name extends string = 'main', Ptr = unknown> {
 
 /** @hidden */
 export interface SolverCtor<Name extends string> {
-  new (): Solver<Name>;
+  new(): Solver<Name>;
 }
 
 export interface Solver<Name extends string = 'main'> {
@@ -726,8 +737,8 @@ export interface Solver<Name extends string = 'main'> {
    * but calling this eagerly can help release memory sooner.
    */
   release(): void;
-   // extensions
-   unsatCore(): AstVector<Name, Bool<Name>>
+  // extensions
+  unsatCore(): AstVector<Name, Bool<Name>>
 }
 
 export interface Optimize<Name extends string = 'main'> {
@@ -773,7 +784,7 @@ export interface Optimize<Name extends string = 'main'> {
 
 /** @hidden */
 export interface ModelCtor<Name extends string> {
-  new (): Model<Name>;
+  new(): Model<Name>;
 }
 
 export interface Model<Name extends string = 'main'> extends Iterable<FuncDecl<Name>> {
@@ -864,12 +875,12 @@ export interface EnumSort<Name extends string = 'main'> extends Sort<Name> {
 export interface Sort<Name extends string = 'main'> extends Ast<Name, Z3_sort> {
   /** @hidden */
   readonly __typename:
-    | 'Sort'
-    | BoolSort['__typename']
-    | ArithSort['__typename']
-    | BitVecSort['__typename']
-    | SMTArraySort['__typename']
-    | EnumSort['__typename'];
+  | 'Sort'
+  | BoolSort['__typename']
+  | ArithSort['__typename']
+  | BitVecSort['__typename']
+  | SMTArraySort['__typename']
+  | EnumSort['__typename'];
 
   kind(): Z3_sort_kind;
 
@@ -989,11 +1000,11 @@ export interface Expr<Name extends string = 'main', S extends Sort<Name> = AnySo
   extends Ast<Name, Ptr> {
   /** @hidden */
   readonly __typename:
-    | 'Expr'
-    | Bool['__typename']
-    | Arith['__typename']
-    | BitVec['__typename']
-    | SMTArray['__typename'];
+  | 'Expr'
+  | Bool['__typename']
+  | Arith['__typename']
+  | BitVec['__typename']
+  | SMTArray['__typename'];
 
   get sort(): S;
 
@@ -1584,16 +1595,16 @@ export type NonEmptySortArray<Name extends string = 'main'> = [Sort<Name>, ...Ar
 export type ArrayIndexType<Name extends string, DomainSort extends Sort<Name>[]> = [
   ...{
     [Key in keyof DomainSort]: DomainSort[Key] extends AnySort<Name>
-      ? SortToExprMap<DomainSort[Key], Name>
-      : DomainSort[Key];
+    ? SortToExprMap<DomainSort[Key], Name>
+    : DomainSort[Key];
   },
 ];
 
 export type CoercibleToArrayIndexType<Name extends string, DomainSort extends Sort<Name>[]> = [
   ...{
     [Key in keyof DomainSort]: DomainSort[Key] extends AnySort<Name>
-      ? CoercibleToMap<SortToExprMap<DomainSort[Key], Name>, Name>
-      : DomainSort[Key];
+    ? CoercibleToMap<SortToExprMap<DomainSort[Key], Name>, Name>
+    : DomainSort[Key];
   },
 ];
 
@@ -1649,9 +1660,9 @@ export interface SMTSetCreation<Name extends string> {
   const<ElemSort extends AnySort<Name>>(name: string, elemSort: ElemSort): SMTSet<Name, ElemSort>;
 
   consts<ElemSort extends AnySort<Name>>(names: string | string[], elemSort: ElemSort): SMTSet<Name, ElemSort>[];
-  
+
   empty<ElemSort extends AnySort<Name>>(sort: ElemSort): SMTSet<Name, ElemSort>;
-  
+
   val<ElemSort extends AnySort<Name>>(values: CoercibleToMap<SortToExprMap<ElemSort, Name>, Name>[], sort: ElemSort): SMTSet<Name, ElemSort>;
 }
 
@@ -1661,21 +1672,21 @@ export interface SMTSetCreation<Name extends string> {
  * @typeParam ElemSort The sort of the element of the set
  * @category Arrays
  */
-export interface SMTSet<Name extends string = 'main', ElemSort extends AnySort<Name> = Sort<Name>>  extends Expr<Name, SMTSetSort<Name, ElemSort>, Z3_ast> {
+export interface SMTSet<Name extends string = 'main', ElemSort extends AnySort<Name> = Sort<Name>> extends Expr<Name, SMTSetSort<Name, ElemSort>, Z3_ast> {
   readonly __typename: 'Array';
-  
+
   elemSort(): ElemSort;
 
   union(...args: SMTSet<Name, ElemSort>[]): SMTSet<Name, ElemSort>;
   intersect(...args: SMTSet<Name, ElemSort>[]): SMTSet<Name, ElemSort>;
   diff(b: SMTSet<Name, ElemSort>): SMTSet<Name, ElemSort>;
-  
+
   hasSize(size: bigint | number | string | IntNum<Name>): Bool<Name>;
 
   add(elem: CoercibleToMap<SortToExprMap<ElemSort, Name>, Name>): SMTSet<Name, ElemSort>;
   del(elem: CoercibleToMap<SortToExprMap<ElemSort, Name>, Name>): SMTSet<Name, ElemSort>;
   complement(): SMTSet<Name, ElemSort>;
-  
+
   contains(elem: CoercibleToMap<SortToExprMap<ElemSort, Name>, Name>): Bool<Name>;
   subsetOf(b: SMTSet<Name, ElemSort>): Bool<Name>;
 
@@ -1742,7 +1753,7 @@ export interface Probe<Name extends string = 'main'> {
 
 /** @hidden */
 export interface TacticCtor<Name extends string> {
-  new (name: string): Tactic<Name>;
+  new(name: string): Tactic<Name>;
 }
 
 export interface Tactic<Name extends string = 'main'> {
@@ -1761,6 +1772,20 @@ export interface Goal<Name extends string = 'main'> {
   readonly ptr: Z3_goal;
   add(expr: Expr): void;
   sexpr(): string;
+ 
+}
+//extended
+export interface ApplyResult<Name extends string = 'main'> {
+  /** @hidden */
+  readonly __typename: 'ApplyResult';
+
+  readonly ctx: Context<Name>;
+  readonly ptr: Z3_apply_result;
+  readonly tactic: Tactic<Name>;
+  readonly goal: Goal<Name>;
+  sexpr(): string;
+  length(): number;
+  getApplyResult(idx: number): Goal<Name>;
 }
 
 /** @hidden */
