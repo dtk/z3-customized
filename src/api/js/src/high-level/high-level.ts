@@ -2207,6 +2207,29 @@ export function createApi(Z3: Z3Core): Z3HighLevel {
       add(expr: Expr) {
         Z3.goal_assert(this.ctx.ptr, this.ptr, expr.ast);
       }
+      size() {
+        return Z3.goal_size(this.ctx.ptr, this.ptr);
+      }
+      get(idx: number) {
+        if (idx >= this.size()) {
+          throw new Error(`Index out of bounds: ${idx} >= ${this.size()}`);
+        }
+        return new BoolImpl(Z3.goal_formula(this.ctx.ptr, this.ptr, idx));
+      }
+      asExpr() {
+        const sz = this.size();
+        if (sz == 0) {
+            return Bool.val(true)
+        } else if (sz == 1) {
+              return this.get(0)
+        } else {
+          const conjuncts = [];
+          for (let i = 0; i < sz; i++) {
+            conjuncts.push(this.get(i));
+          }
+          return And(...conjuncts);
+        }
+      }
       sexpr() {
         return Z3.goal_to_string(this.ctx.ptr, this.ptr);
       }

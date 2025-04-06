@@ -1770,9 +1770,12 @@ export interface Goal<Name extends string = 'main'> {
 
   readonly ctx: Context<Name>;
   readonly ptr: Z3_goal;
+  
   add(expr: Expr): void;
+  asExpr(): Bool<Name>;
+  get(idx: number): Expr<Name>;
+  size(): number;
   sexpr(): string;
- 
 }
 //extended
 export interface ApplyResult<Name extends string = 'main'> {
@@ -1783,9 +1786,10 @@ export interface ApplyResult<Name extends string = 'main'> {
   readonly ptr: Z3_apply_result;
   readonly tactic: Tactic<Name>;
   readonly goal: Goal<Name>;
-  sexpr(): string;
-  length(): number;
+
   getApplyResult(idx: number): Goal<Name>;
+  length(): number;
+  sexpr(): string;
 }
 
 /** @hidden */
